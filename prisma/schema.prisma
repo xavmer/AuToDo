@@ -1,0 +1,254 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  EXECUTIVE
+  MANAGER
+  EMPLOYEE
+}
+
+enum TaskStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  BLOCKED
+  NEEDS_REVIEW
+  DONE
+}
+
+enum ProjectStatus {
+  PLANNING
+  ACTIVE
+  ON_HOLD
+  COMPLETED
+  CANCELLED
+}
+
+enum Seniority {
+  JUNIOR
+  MID
+  SENIOR
+}
+
+enum AssigneeType {
+  EMPLOYEE
+  AI
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         UserRole
+  teamId       String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  team              Team?              @relation(fields: [teamId], references: [id])
+  employeeProfile   EmployeeProfile?
+  createdProjects   Project[]          @relation("ProjectCreator")
+  managedProjects   Project[]          @relation("ProjectManager")
+  assignedTasks     Task[]             @relation("TaskAssignee")
+  reviewedTasks     Task[]             @relation("TaskReviewer")
+  sentMessages      Message[]
+  sentThreadMessages ThreadMessage[]
+  activityLogs      ActivityLog[]
+  notifications     Notification[]
+  taskRecommendations TaskRecommendation[]
+
+  @@index([email])
+  @@index([role])
+  @@index([teamId])
+}
+
+model Team {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members User[]
+
+  @@index([name])
+}
+
+model EmployeeProfile {
+  id                    String     @id @default(cuid())
+  userId                String     @unique
+  skills                Json       // string[]
+  weaknesses            Json       // string[]
+  capacityHoursPerWeek  Float
+  seniority             Seniority
+  preferences           Json       // object with various preferences
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([seniority])
+}
+
+model Project {
+  id          String        @id @default(cuid())
+  title       String
+  prompt      String?       // Original AI prompt used to generate project
+  description String?
+  createdById String
+  managerId   String
+  status      ProjectStatus @default(PLANNING)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  createdBy User      @relation("ProjectCreator", fields: [createdById], references: [id])
+  manager   User      @relation("ProjectManager", fields: [managerId], references: [id])
+  tasks     Task[]
+  channels  Channel[]
+
+  @@index([createdById])
+  @@index([managerId])
+  @@index([status])
+}
+
+model Task {
+  id                     String       @id @default(cuid())
+  projectId              String
+  title                  String
+  description            String
+  status                 TaskStatus   @default(NOT_STARTED)
+  assigneeType           AssigneeType?
+  assigneeUserId         String?
+  reviewerManagerId      String?
+  dueDate                DateTime?
+  priority               Int          @default(0) // 0=low, 1=medium, 2=high
+  dependencies           Json         // string[] of task IDs
+  estimatedEffortHours   Float
+  skills                 Json         // string[] of required skills
+  acceptanceCriteria     Json         // string[] of criteria
+  suggestedAssigneeType  AssigneeType?
+  suggestedReviewerRole  String?      // e.g., "manager"
+  createdAt              DateTime     @default(now())
+  updatedAt              DateTime     @updatedAt
+
+  project         Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assignee        User?                @relation("TaskAssignee", fields: [assigneeUserId], references: [id])
+  reviewer        User?                @relation("TaskReviewer", fields: [reviewerManagerId], references: [id])
+  recommendations TaskRecommendation[]
+  taskThread      TaskThread?
+
+  @@index([projectId])
+  @@index([assigneeUserId])
+  @@index([status])
+  @@index([reviewerManagerId])
+}
+
+model TaskRecommendation {
+  id                      String       @id @default(cuid())
+  taskId                  String
+  recommendedAssigneeType AssigneeType
+  recommendedAssigneeUserId String?
+  score                   Json         // detailed scoring breakdown
+  rationale               String       // explanation for ML training
+  createdAt               DateTime     @default(now())
+
+  task     Task  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  assignee User? @relation(fields: [recommendedAssigneeUserId], references: [id])
+
+  @@index([taskId])
+  @@index([recommendedAssigneeUserId])
+}
+
+model Channel {
+  id        String   @id @default(cuid())
+  projectId String
+  name      String   @default("general")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  messages    Message[]
+  taskThreads TaskThread[]
+
+  @@index([projectId])
+}
+
+model Message {
+  id        String   @id @default(cuid())
+  channelId String
+  senderId  String
+  body      String
+  createdAt DateTime @default(now())
+
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  sender  User    @relation(fields: [senderId], references: [id])
+
+  @@index([channelId])
+  @@index([senderId])
+  @@index([createdAt])
+}
+
+model TaskThread {
+  id        String   @id @default(cuid())
+  taskId    String   @unique
+  channelId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  task     Task            @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  channel  Channel         @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  messages ThreadMessage[]
+
+  @@index([taskId])
+  @@index([channelId])
+}
+
+model ThreadMessage {
+  id       String   @id @default(cuid())
+  threadId String
+  senderId String
+  body     String
+  createdAt DateTime @default(now())
+
+  thread TaskThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  sender User       @relation(fields: [senderId], references: [id])
+
+  @@index([threadId])
+  @@index([senderId])
+  @@index([createdAt])
+}
+
+model ActivityLog {
+  id         String   @id @default(cuid())
+  actorId    String
+  entityType String   // "project", "task", "assignment", etc.
+  entityId   String
+  action     String   // "created", "updated", "assigned", etc.
+  payload    Json     // additional context/data
+  createdAt  DateTime @default(now())
+
+  actor User @relation(fields: [actorId], references: [id])
+
+  @@index([actorId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String   // "assignment", "mention", "status_change"
+  payload   Json     // relevant data (taskId, projectId, message, etc.)
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read])
+  @@index([createdAt])
+}
