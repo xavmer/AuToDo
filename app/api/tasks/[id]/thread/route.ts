@@ -46,7 +46,7 @@ async function handlePOST(
   const body = await req.json()
   const validated = CreateThreadMessageSchema.parse(body)
 
-  const taskThread = await prisma.taskThread.findUnique({
+  let taskThread = await prisma.taskThread.findUnique({
     where: { taskId: params.id },
     include: {
       task: {
@@ -63,8 +63,28 @@ async function handlePOST(
     },
   })
 
+  // Auto-create task thread if it doesn't exist
   if (!taskThread) {
-    return NextResponse.json({ error: "Task thread not found" }, { status: 404 })
+    taskThread = await prisma.taskThread.create({
+      data: {
+        task: {
+          connect: { id: params.id },
+        },
+      },
+      include: {
+        task: {
+          include: {
+            assignee: { select: { id: true, name: true } },
+            reviewer: { select: { id: true, name: true } },
+            project: {
+              include: {
+                manager: { select: { id: true, name: true } },
+              },
+            },
+          },
+        },
+      },
+    })
   }
 
   const message = await prisma.threadMessage.create({
@@ -79,31 +99,33 @@ async function handlePOST(
   })
 
   // Parse mentions and create notifications
-  const allUsers = [
-    taskThread.task.assignee,
-    taskThread.task.reviewer,
-    taskThread.task.project.manager,
-  ].filter((u): u is { id: string; name: string } => u !== null)
+  if (taskThread.task) {
+    const allUsers = [
+      taskThread.task.assignee,
+      taskThread.task.reviewer,
+      taskThread.task.project?.manager,
+    ].filter((u): u is { id: string; name: string } => u !== null)
 
-  const mentionedUserIds = parseMentions(validated.body, allUsers)
+    const mentionedUserIds = parseMentions(validated.body, allUsers)
 
-  if (mentionedUserIds.length > 0) {
-    await createNotifications(
-      mentionedUserIds
-        .filter((id) => id !== user.id)
-        .map((userId) => ({
-          userId,
-          type: "mention" as const,
-          payload: {
-            messageId: message.id,
-            taskId: params.id,
-            taskTitle: taskThread.task.title,
-            senderId: user.id,
-            senderName: user.name,
-            body: validated.body,
-          },
-        }))
-    )
+    if (mentionedUserIds.length > 0) {
+      await createNotifications(
+        mentionedUserIds
+          .filter((id) => id !== user.id)
+          .map((userId) => ({
+            userId,
+            type: "mention" as const,
+            payload: {
+              messageId: message.id,
+              taskId: params.id,
+              taskTitle: taskThread.task?.title || "Task",
+              senderId: user.id,
+              senderName: user.name || "User",
+              body: validated.body,
+            },
+          }))
+      )
+    }
   }
 
   await logActivity({

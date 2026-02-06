@@ -45,7 +45,6 @@ export default function NewManualProjectPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title,
-          description,
           managerId,
         }),
       })
@@ -56,7 +55,7 @@ export default function NewManualProjectPage() {
       }
 
       const data = await response.json()
-      router.push(`/projects/${data.project.id}`)
+      router.push(`/projects/${data.project.id}/edit`)
     } catch (err: any) {
       setError(err.message || "Failed to create project")
     } finally {

@@ -8,13 +8,16 @@ import { z } from "zod"
 
 const UpdateTaskSchema = z.object({
   status: z.enum(["NOT_STARTED", "IN_PROGRESS", "BLOCKED", "NEEDS_REVIEW", "DONE"]).optional(),
-  assigneeType: z.enum(["EMPLOYEE", "AI"]).optional(),
-  assigneeUserId: z.string().optional(),
+  assigneeType: z.enum(["EMPLOYEE", "AI"]).nullable().optional(),
+  assigneeUserId: z.string().nullable().optional(),
   reviewerManagerId: z.string().optional(),
   title: z.string().optional(),
   description: z.string().optional(),
   priority: z.number().min(0).max(2).optional(),
   dueDate: z.string().optional(),
+  estimatedEffortHours: z.number().min(0.5).max(8).optional(),
+  skills: z.array(z.string()).optional(),
+  acceptanceCriteria: z.array(z.string()).optional(),
 })
 
 async function handleGET(
@@ -132,6 +135,9 @@ async function handlePATCH(
   if (validated.description) updateData.description = validated.description
   if (validated.priority !== undefined) updateData.priority = validated.priority
   if (validated.dueDate !== undefined) updateData.dueDate = validated.dueDate ? new Date(validated.dueDate) : null
+  if (validated.estimatedEffortHours !== undefined) updateData.estimatedEffortHours = validated.estimatedEffortHours
+  if (validated.skills !== undefined) updateData.skills = validated.skills
+  if (validated.acceptanceCriteria !== undefined) updateData.acceptanceCriteria = validated.acceptanceCriteria
 
   const updatedTask = await prisma.task.update({
     where: { id: params.id },
@@ -143,30 +149,46 @@ async function handlePATCH(
   })
 
   // Log assignment changes
-  if (validated.assigneeUserId && validated.assigneeUserId !== task.assigneeUserId) {
-    await logActivity({
-      actorId: user.id,
-      entityType: "task",
-      entityId: params.id,
-      action: "assigned",
-      payload: {
-        assigneeUserId: validated.assigneeUserId,
-        taskTitle: task.title,
-        projectId: task.projectId,
-      },
-    })
+  if (validated.assigneeUserId !== undefined && validated.assigneeUserId !== task.assigneeUserId) {
+    if (validated.assigneeUserId === null) {
+      // Unassignment
+      await logActivity({
+        actorId: user.id,
+        entityType: "task",
+        entityId: params.id,
+        action: "unassigned",
+        payload: {
+          previousAssigneeUserId: task.assigneeUserId,
+          taskTitle: task.title,
+          projectId: task.projectId,
+        },
+      })
+    } else {
+      // Assignment
+      await logActivity({
+        actorId: user.id,
+        entityType: "task",
+        entityId: params.id,
+        action: "assigned",
+        payload: {
+          assigneeUserId: validated.assigneeUserId,
+          taskTitle: task.title,
+          projectId: task.projectId,
+        },
+      })
 
-    // Notify assignee
-    await createNotification({
-      userId: validated.assigneeUserId,
-      type: "assignment",
-      payload: {
-        taskId: params.id,
-        taskTitle: task.title,
-        projectId: task.projectId,
-        assignedBy: user.name,
-      },
-    })
+      // Notify assignee
+      await createNotification({
+        userId: validated.assigneeUserId,
+        type: "assignment",
+        payload: {
+          taskId: params.id,
+          taskTitle: task.title,
+          projectId: task.projectId,
+          assignedBy: user.name,
+        },
+      })
+    }
   }
 
   // Log status changes

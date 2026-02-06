@@ -43,4 +43,27 @@ async function handleGET(
   return NextResponse.json({ project })
 }
 
+async function handlePATCH(
+  req: Request,
+  { params }: { params: { id: string } }
+) {
+  const user = await requireRole([UserRole.EXECUTIVE, UserRole.MANAGER])
+  await assertProjectAccess(user.id, user.role, params.id, user.teamId)
+
+  const body = await req.json()
+  const { title, description, status } = body
+
+  const updatedProject = await prisma.project.update({
+    where: { id: params.id },
+    data: {
+      ...(title && { title }),
+      ...(description !== undefined && { description }),
+      ...(status && { status }),
+    },
+  })
+
+  return NextResponse.json({ project: updatedProject })
+}
+
 export const GET = withErrorHandling(handleGET)
+export const PATCH = withErrorHandling(handlePATCH)

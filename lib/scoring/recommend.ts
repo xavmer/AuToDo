@@ -72,15 +72,19 @@ function calculateSkillOverlap(
   const taskSkillsLower = taskSkills.map((s) => s.toLowerCase())
   const employeeSkillsLower = employeeSkills.map((s) => s.toLowerCase())
 
-  const matched = taskSkillsLower.filter((s) => employeeSkillsLower.includes(s))
-  const missing = taskSkillsLower.filter((s) => !employeeSkillsLower.includes(s))
+  const matchedLower = taskSkillsLower.filter((s) => employeeSkillsLower.includes(s))
+  const missingLower = taskSkillsLower.filter((s) => !employeeSkillsLower.includes(s))
 
-  const score = matched.length / taskSkills.length
+  const score = matchedLower.length / taskSkills.length
+
+  // Map back to original case
+  const matched = taskSkills.filter((s) => matchedLower.includes(s.toLowerCase()))
+  const missing = taskSkills.filter((s) => missingLower.includes(s.toLowerCase()))
 
   return {
     score,
-    matched: taskSkills.filter((s) => taskSkillsLower.includes(s.toLowerCase())),
-    missing: taskSkills.filter((s) => !matched.includes(s.toLowerCase())),
+    matched,
+    missing,
   }
 }
 
