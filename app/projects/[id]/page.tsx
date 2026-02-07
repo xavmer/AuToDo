@@ -16,6 +16,9 @@ export default function ProjectDetailPage({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [generatingRecs, setGeneratingRecs] = useState(false)
+  const [assigningTask, setAssigningTask] = useState<string | null>(null)
+  const [availableUsers, setAvailableUsers] = useState<any[]>([])
+  const [loadingUsers, setLoadingUsers] = useState(false)
   const router = useRouter()
 
   useEffect(() => {
@@ -45,6 +48,26 @@ export default function ProjectDetailPage({
       }
     } catch (err) {
       console.error("Failed to load recommendations:", err)
+    }
+  }
+
+  const loadAvailableUsers = async () => {
+    setLoadingUsers(true)
+    try {
+      // Get all users (managers and employees)
+      const response = await fetch('/api/users')
+      if (response.ok) {
+        const data = await response.json()
+        // Filter to only employees and managers
+        const assignableUsers = (data.users || []).filter((u: any) => 
+          u.role === 'EMPLOYEE' || u.role === 'MANAGER'
+        )
+        setAvailableUsers(assignableUsers)
+      }
+    } catch (err) {
+      console.error("Failed to load users:", err)
+    } finally {
+      setLoadingUsers(false)
     }
   }
 
@@ -95,6 +118,33 @@ export default function ProjectDetailPage({
       await loadRecommendations()
     } catch (err) {
       alert(`Failed to unassign task: ${err instanceof Error ? err.message : "Unknown error"}`)
+    }
+  }
+
+  const manualAssignTask = async (taskId: string, userId: string) => {
+    try {
+      const response = await fetch(`/api/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          assigneeUserId: userId, 
+          assigneeType: "EMPLOYEE",
+          status: "NOT_STARTED"
+        }),
+      })
+      if (!response.ok) throw new Error("Failed to assign task")
+      setAssigningTask(null)
+      await loadProject()
+      await loadRecommendations()
+    } catch (err) {
+      alert(`Failed to assign task: ${err instanceof Error ? err.message : "Unknown error"}`)
+    }
+  }
+
+  const openAssignModal = async (taskId: string) => {
+    setAssigningTask(taskId)
+    if (availableUsers.length === 0) {
+      await loadAvailableUsers()
     }
   }
 
@@ -234,14 +284,24 @@ export default function ProjectDetailPage({
                         <span>{task.estimatedEffortHours}h</span>
                       </div>
                     </div>
-                      {task.assignee && (
-                        <button
-                          onClick={() => unassignTask(task.id)}
-                          className="px-3 py-1 text-xs bg-slate-600 dark:bg-slate-700 text-white rounded hover:bg-slate-700 dark:hover:bg-slate-600 transition-colors"
-                        >
-                          Unassign
-                        </button>
-                      )}
+                      <div className="flex gap-2">
+                        {!task.assignee && (
+                          <button
+                            onClick={() => openAssignModal(task.id)}
+                            className="px-3 py-1 text-xs bg-indigo-600 dark:bg-indigo-500 text-white rounded hover:bg-indigo-700 dark:hover:bg-indigo-600 transition-colors"
+                          >
+                            Assign
+                          </button>
+                        )}
+                        {task.assignee && (
+                          <button
+                            onClick={() => unassignTask(task.id)}
+                            className="px-3 py-1 text-xs bg-slate-600 dark:bg-slate-700 text-white rounded hover:bg-slate-700 dark:hover:bg-slate-600 transition-colors"
+                          >
+                            Unassign
+                          </button>
+                        )}
+                      </div>
                     </div>
 
                     {!task.assigneeUserId && taskRecs && taskRecs.recommendations.length > 0 && (
@@ -381,6 +441,74 @@ export default function ProjectDetailPage({
           </div>
         )}
       </div>
+
+      {/* Manual Assignment Modal */}
+      {assigningTask && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl max-w-md w-full p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-semibold text-slate-900 dark:text-white">
+                Assign Task
+              </h3>
+              <button
+                onClick={() => setAssigningTask(null)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {loadingUsers ? (
+              <div className="py-8 text-center">
+                <LoadingSpinner />
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-96 overflow-y-auto">
+                {availableUsers.length === 0 ? (
+                  <p className="text-slate-500 dark:text-slate-400 text-center py-4">
+                    No users available
+                  </p>
+                ) : (
+                  availableUsers.map((user) => (
+                    <button
+                      key={user.id}
+                      onClick={() => manualAssignTask(assigningTask, user.id)}
+                      className="w-full p-3 text-left border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="font-medium text-slate-900 dark:text-white">
+                          {user.name}
+                        </div>
+                        <span className={`text-xs px-2 py-1 rounded ${
+                          user.role === 'MANAGER' 
+                            ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300'
+                            : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                        }`}>
+                          {user.role}
+                        </span>
+                      </div>
+                      <div className="text-sm text-slate-600 dark:text-slate-400">
+                        {user.email}
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
+
+            <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
+              <button
+                onClick={() => setAssigningTask(null)}
+                className="w-full px-4 py-2 bg-slate-600 dark:bg-slate-700 text-white rounded-lg hover:bg-slate-700 dark:hover:bg-slate-600 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

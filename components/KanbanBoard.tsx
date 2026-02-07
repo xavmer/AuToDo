@@ -1,7 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 
 interface Task {
   id: string
@@ -20,10 +21,29 @@ interface Task {
 interface KanbanBoardProps {
   initialTasks: Task[]
   userName: string
+  onRefresh?: () => void
 }
 
-export function KanbanBoard({ initialTasks, userName }: KanbanBoardProps) {
+export function KanbanBoard({ initialTasks, userName, onRefresh }: KanbanBoardProps) {
   const [tasks, setTasks] = useState<Task[]>(initialTasks)
+  const [viewMode, setViewMode] = useState<'board' | 'list'>('board')
+
+  // Update tasks when initialTasks changes (e.g., when navigating back)
+  useEffect(() => {
+    setTasks(initialTasks)
+  }, [initialTasks])
+
+  // Refresh data when the page becomes visible again
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden && onRefresh) {
+        onRefresh()
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+  }, [onRefresh])
 
   const updateTaskStatus = async (taskId: string, newStatus: string) => {
     try {
@@ -38,6 +58,11 @@ export function KanbanBoard({ initialTasks, userName }: KanbanBoardProps) {
       setTasks((prevTasks) =>
         prevTasks.map((t) => (t.id === taskId ? { ...t, status: newStatus } : t))
       )
+      
+      // Call onRefresh callback if provided
+      if (onRefresh) {
+        setTimeout(() => onRefresh(), 500)
+      }
     } catch (err) {
       console.error("Failed to update task status:", err)
       alert("Failed to update task status")
@@ -106,51 +131,159 @@ export function KanbanBoard({ initialTasks, userName }: KanbanBoardProps) {
 
         {/* View Tabs */}
         <div className="flex border-b border-slate-200 dark:border-slate-700 gap-8">
-          <button className="flex items-center gap-2 border-b-2 border-indigo-600 text-slate-900 dark:text-white pb-3 pt-2 px-1 text-sm font-bold tracking-wide">
+          <button 
+            onClick={() => setViewMode('board')}
+            className={`flex items-center gap-2 border-b-2 pb-3 pt-2 px-1 text-sm font-bold tracking-wide transition-all ${
+              viewMode === 'board' 
+                ? 'border-indigo-600 text-slate-900 dark:text-white' 
+                : 'border-transparent text-slate-500 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
             Board View
           </button>
-          <button className="flex items-center gap-2 border-b-2 border-transparent text-slate-500 hover:text-slate-900 dark:hover:text-white pb-3 pt-2 px-1 text-sm font-bold tracking-wide transition-all">
+          <button 
+            onClick={() => setViewMode('list')}
+            className={`flex items-center gap-2 border-b-2 pb-3 pt-2 px-1 text-sm font-bold tracking-wide transition-all ${
+              viewMode === 'list' 
+                ? 'border-indigo-600 text-slate-900 dark:text-white' 
+                : 'border-transparent text-slate-500 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
             List View
           </button>
         </div>
       </div>
 
-      {/* Kanban Board */}
-      <div className="flex flex-1 overflow-x-auto p-8 gap-6 items-start bg-slate-50 dark:bg-slate-900">
-        <KanbanColumn
-          title="To-Do"
-          count={tasksByStatus.TODO.length}
-          color="bg-slate-400"
-          tasks={tasksByStatus.TODO}
-          onStatusChange={updateTaskStatus}
-        />
+      {/* Board View */}
+      {viewMode === 'board' && (
+        <div className="flex flex-1 overflow-x-auto p-8 gap-6 items-start bg-slate-50 dark:bg-slate-900">
+          <KanbanColumn
+            title="To-Do"
+            count={tasksByStatus.TODO.length}
+            color="bg-slate-400"
+            tasks={tasksByStatus.TODO}
+            onStatusChange={updateTaskStatus}
+          />
 
-        <KanbanColumn
-          title="In Progress"
-          count={tasksByStatus.IN_PROGRESS.length}
-          color="bg-indigo-600 animate-pulse"
-          tasks={tasksByStatus.IN_PROGRESS}
-          onStatusChange={updateTaskStatus}
-          isActive
-        />
+          <KanbanColumn
+            title="In Progress"
+            count={tasksByStatus.IN_PROGRESS.length}
+            color="bg-indigo-600 animate-pulse"
+            tasks={tasksByStatus.IN_PROGRESS}
+            onStatusChange={updateTaskStatus}
+            isActive
+          />
 
-        <KanbanColumn
-          title="Review"
-          count={tasksByStatus.REVIEW.length}
-          color="bg-amber-400"
-          tasks={tasksByStatus.REVIEW}
-          onStatusChange={updateTaskStatus}
-        />
+          <KanbanColumn
+            title="Review"
+            count={tasksByStatus.REVIEW.length}
+            color="bg-amber-400"
+            tasks={tasksByStatus.REVIEW}
+            onStatusChange={updateTaskStatus}
+          />
 
-        <KanbanColumn
-          title="Done"
-          count={tasksByStatus.DONE.length}
-          color="bg-emerald-500"
-          tasks={tasksByStatus.DONE}
-          onStatusChange={updateTaskStatus}
-          isDone
-        />
-      </div>
+          <KanbanColumn
+            title="Done"
+            count={tasksByStatus.DONE.length}
+            color="bg-emerald-500"
+            tasks={tasksByStatus.DONE}
+            onStatusChange={updateTaskStatus}
+            isDone
+          />
+        </div>
+      )}
+
+      {/* List View */}
+      {viewMode === 'list' && (
+        <div className="flex-1 overflow-y-auto p-8 bg-slate-50 dark:bg-slate-900">
+          <div className="max-w-5xl mx-auto space-y-3">
+            {tasks.length === 0 ? (
+              <div className="text-center py-12 text-slate-500 dark:text-slate-400">
+                No tasks assigned
+              </div>
+            ) : (
+              tasks.map((task) => (
+                <Link
+                  key={task.id}
+                  href={`/tasks/${task.id}`}
+                  className="block bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-4 hover:shadow-lg transition-shadow"
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-3 mb-2">
+                        <h3 className="text-lg font-semibold text-slate-900 dark:text-white truncate">
+                          {task.title}
+                        </h3>
+                        <select
+                          value={task.status}
+                          onChange={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            updateTaskStatus(task.id, e.target.value)
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          className="px-3 py-1 text-xs border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
+                        >
+                          <option value="NOT_STARTED">To-Do</option>
+                          <option value="IN_PROGRESS">In Progress</option>
+                          <option value="BLOCKED">Blocked</option>
+                          <option value="NEEDS_REVIEW">Needs Review</option>
+                          <option value="DONE">Done</option>
+                        </select>
+                      </div>
+                      {task.description && (
+                        <p className="text-sm text-slate-600 dark:text-slate-400 mb-3 line-clamp-2">
+                          {task.description}
+                        </p>
+                      )}
+                      <div className="flex items-center gap-4 text-sm text-slate-500 dark:text-slate-400">
+                        <span className="flex items-center gap-1">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                          </svg>
+                          {task.project.title}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          {task.estimatedEffortHours}h
+                        </span>
+                        <span className={`px-2 py-1 rounded text-xs font-medium ${
+                          task.priority === 2 
+                            ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'
+                            : task.priority === 1 
+                            ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300'
+                            : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                        }`}>
+                          {task.priority === 2 ? 'High' : task.priority === 1 ? 'Medium' : 'Low'}
+                        </span>
+                      </div>
+                      {task.skills.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {task.skills.slice(0, 3).map((skill, i) => (
+                            <span
+                              key={i}
+                              className="px-2 py-0.5 text-xs bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded"
+                            >
+                              {skill}
+                            </span>
+                          ))}
+                          {task.skills.length > 3 && (
+                            <span className="px-2 py-0.5 text-xs bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded">
+                              +{task.skills.length - 3} more
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </Link>
+              ))
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

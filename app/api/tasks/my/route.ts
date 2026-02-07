@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db"
 import { UserRole } from "@prisma/client"
 
 async function handleGET(req: Request) {
-  const user = await requireRole([UserRole.EMPLOYEE])
+  const user = await requireRole([UserRole.EMPLOYEE, UserRole.MANAGER])
 
   const tasks = await prisma.task.findMany({
     where: {

@@ -14,8 +14,9 @@ const UpdateTaskSchema = z.object({
   title: z.string().optional(),
   description: z.string().optional(),
   priority: z.number().min(0).max(2).optional(),
+  useAI: z.boolean().optional(),
   dueDate: z.string().optional(),
-  estimatedEffortHours: z.number().min(0.5).max(8).optional(),
+  estimatedEffortHours: z.number().min(0.5).max(80).optional(),
   skills: z.array(z.string()).optional(),
   acceptanceCriteria: z.array(z.string()).optional(),
 })
@@ -134,6 +135,7 @@ async function handlePATCH(
   if (validated.title) updateData.title = validated.title
   if (validated.description) updateData.description = validated.description
   if (validated.priority !== undefined) updateData.priority = validated.priority
+  if (validated.useAI !== undefined) updateData.useAI = validated.useAI
   if (validated.dueDate !== undefined) updateData.dueDate = validated.dueDate ? new Date(validated.dueDate) : null
   if (validated.estimatedEffortHours !== undefined) updateData.estimatedEffortHours = validated.estimatedEffortHours
   if (validated.skills !== undefined) updateData.skills = validated.skills

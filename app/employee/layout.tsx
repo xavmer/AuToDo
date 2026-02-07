@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation"
 import { auth } from "@/lib/auth"
 import { Navbar } from "@/components/Navbar"
+import { MessageSidebar } from "@/components/MessageSidebar"
+import { SidebarProvider, SidebarLayoutFlex } from "@/components/SidebarLayout"
 
 export default async function EmployeeLayout({
   children,
@@ -14,15 +16,20 @@ export default async function EmployeeLayout({
   }
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50 dark:bg-[#101622]">
-      <Navbar
-        userName={session.user.name || "Employee"}
-        userRole="Employee"
-        links={[{ href: "/employee/tasks", label: "My Tasks" }]}
-      />
-      <main className="flex-1 overflow-hidden">
-        {children}
-      </main>
-    </div>
+    <SidebarProvider>
+      <MessageSidebar />
+      <SidebarLayoutFlex>
+        <Navbar
+          userId={session.user.id}
+          userName={session.user.name || "Employee"}
+          userRole="Employee"
+          avatarUrl={session.user.avatarUrl}
+          links={[{ href: "/employee/tasks", label: "My Tasks" }]}
+        />
+        <main className="flex-1 overflow-hidden">
+          {children}
+        </main>
+      </SidebarLayoutFlex>
+    </SidebarProvider>
   )
 }

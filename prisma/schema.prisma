@@ -47,6 +47,8 @@ model User {
   passwordHash String
   role         UserRole
   teamId       String?
+  avatarUrl    String?
+  bio          String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -61,6 +63,11 @@ model User {
   activityLogs      ActivityLog[]
   notifications     Notification[]
   taskRecommendations TaskRecommendation[]
+  sentDirectMessages    DirectMessage[] @relation("SentDirectMessages")
+  receivedDirectMessages DirectMessage[] @relation("ReceivedDirectMessages")
+  createdGroupChats     GroupChat[]
+  groupChatMemberships  GroupChatMember[]
+  groupChatMessages     GroupChatMessage[]
 
   @@index([email])
   @@index([role])
@@ -133,6 +140,7 @@ model Task {
   acceptanceCriteria     Json         // string[] of criteria
   suggestedAssigneeType  AssigneeType?
   suggestedReviewerRole  String?      // e.g., "manager"
+  useAI                  Boolean      @default(false) // Whether to use AI to complete this task
   createdAt              DateTime     @default(now())
   updatedAt              DateTime     @updatedAt
 
@@ -250,5 +258,65 @@ model Notification {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, read])
+  @@index([createdAt])
+}
+
+model DirectMessage {
+  id         String   @id @default(cuid())
+  senderId   String
+  receiverId String
+  body       String
+  read       Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  sender   User @relation("SentDirectMessages", fields: [senderId], references: [id])
+  receiver User @relation("ReceivedDirectMessages", fields: [receiverId], references: [id])
+
+  @@index([senderId])
+  @@index([receiverId])
+  @@index([createdAt])
+}
+
+model GroupChat {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  createdBy User              @relation(fields: [createdById], references: [id])
+  members   GroupChatMember[]
+  messages  GroupChatMessage[]
+
+  @@index([createdById])
+}
+
+model GroupChatMember {
+  id          String   @id @default(cuid())
+  groupChatId String
+  userId      String
+  joinedAt    DateTime @default(now())
+
+  groupChat GroupChat @relation(fields: [groupChatId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupChatId, userId])
+  @@index([groupChatId])
+  @@index([userId])
+}
+
+model GroupChatMessage {
+  id          String   @id @default(cuid())
+  groupChatId String
+  senderId    String
+  body        String
+  createdAt   DateTime @default(now())
+
+  groupChat GroupChat @relation(fields: [groupChatId], references: [id], onDelete: Cascade)
+  sender    User      @relation(fields: [senderId], references: [id])
+
+  @@index([groupChatId])
+  @@index([senderId])
   @@index([createdAt])
 }

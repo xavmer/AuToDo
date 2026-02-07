@@ -1,33 +1,37 @@
-import { auth } from "@/lib/auth"
-import { prisma } from "@/lib/db"
+"use client"
+
+import { useState, useEffect } from "react"
+import { useSession } from "next-auth/react"
 import { KanbanBoard } from "@/components/KanbanBoard"
+import { LoadingSpinner } from "@/components/LoadingSpinner"
 
-async function getMyTasks(userId: string) {
-  return prisma.task.findMany({
-    where: {
-      assigneeUserId: userId,
-    },
-    include: {
-      project: {
-        select: {
-          id: true,
-          title: true,
-        },
-      },
-    },
-    orderBy: [
-      { priority: "desc" },
-      { dueDate: "asc" },
-      { createdAt: "desc" },
-    ],
-  })
-}
+export default function EmployeeTasksPage() {
+  const { data: session } = useSession()
+  const [tasks, setTasks] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
 
-export default async function EmployeeTasksPage() {
-  const session = await auth()
-  if (!session?.user) return null
+  useEffect(() => {
+    if (session?.user?.id) {
+      loadTasks()
+    }
+  }, [session?.user?.id])
 
-  const tasks = await getMyTasks(session.user.id)
+  const loadTasks = async () => {
+    try {
+      const response = await fetch('/api/tasks/my')
+      if (response.ok) {
+        const data = await response.json()
+        setTasks(data.tasks)
+      }
+    } catch (err) {
+      console.error("Failed to load tasks:", err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (!session?.user) return <LoadingSpinner />
+  if (loading) return <LoadingSpinner />
 
   // Transform tasks to match KanbanBoard expected format
   const transformedTasks = tasks.map((task) => ({
@@ -41,5 +45,5 @@ export default async function EmployeeTasksPage() {
     project: task.project,
   }))
 
-  return <KanbanBoard initialTasks={transformedTasks} userName={session.user.name || "User"} />
+  return <KanbanBoard initialTasks={transformedTasks} userName={session.user.name || "User"} onRefresh={loadTasks} />
 }

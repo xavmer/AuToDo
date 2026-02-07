@@ -65,10 +65,40 @@ async function handlePOST(
 
   // Auto-create task thread if it doesn't exist
   if (!taskThread) {
+    // First, get the task to find its project and channel
+    const task = await prisma.task.findUnique({
+      where: { id: params.id },
+      include: {
+        project: {
+          include: {
+            channels: true,
+          },
+        },
+      },
+    })
+
+    if (!task) {
+      return NextResponse.json({ error: "Task not found" }, { status: 404 })
+    }
+
+    // Find or create a channel for the project
+    let channel = task.project.channels[0]
+    if (!channel) {
+      channel = await prisma.channel.create({
+        data: {
+          projectId: task.projectId,
+          name: "general",
+        },
+      })
+    }
+
     taskThread = await prisma.taskThread.create({
       data: {
         task: {
           connect: { id: params.id },
+        },
+        channel: {
+          connect: { id: channel.id },
         },
       },
       include: {

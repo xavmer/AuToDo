@@ -16,6 +16,8 @@ async function handleGET(
       name: true,
       email: true,
       role: true,
+      avatarUrl: true,
+      bio: true,
       createdAt: true,
       team: {
         select: {

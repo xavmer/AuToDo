@@ -6,10 +6,7 @@ import { TaskStatusBadge } from "@/components/TaskStatusBadge"
 async function getProjects(userId: string, teamId: string | null) {
   return prisma.project.findMany({
     where: {
-      OR: [
-        { managerId: userId },
-        ...(teamId ? [{ manager: { teamId } }] : []),
-      ],
+      managerId: userId,
     },
     include: {
       createdBy: { select: { name: true } },
@@ -37,15 +34,26 @@ export default async function ManagerProjectsPage() {
             Manage and track all your projects
           </p>
         </div>
-        <Link
-          href="/manager/projects/new-ai"
-          className="inline-flex items-center px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-emerald-600 dark:bg-emerald-500 hover:bg-emerald-700 dark:hover:bg-emerald-600 transition-colors"
-        >
-          <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          New AI Project
-        </Link>
+        <div className="flex gap-3">
+          <Link
+            href="/manager/projects/new"
+            className="inline-flex items-center px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-indigo-600 dark:bg-indigo-500 hover:bg-indigo-700 dark:hover:bg-indigo-600 transition-colors"
+          >
+            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            New Manual Project
+          </Link>
+          <Link
+            href="/manager/projects/new-ai"
+            className="inline-flex items-center px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-emerald-600 dark:bg-emerald-500 hover:bg-emerald-700 dark:hover:bg-emerald-600 transition-colors"
+          >
+            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            New AI Project
+          </Link>
+        </div>
       </div>
 
       {projects.length === 0 ? (

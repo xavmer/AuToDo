@@ -1,5 +1,6 @@
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/db"
+import Link from "next/link"
 
 async function getAnalyticsData(managerId: string) {
   // Get all projects managed by this manager
@@ -268,14 +269,14 @@ export default async function ManagerAnalyticsPage() {
                     className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
                   >
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div>
-                        <div className="font-medium text-slate-900 dark:text-white">
+                      <Link href={`/users/${member.id}`} className="block hover:bg-slate-100 dark:hover:bg-slate-700/70 rounded px-2 py-1 -mx-2 -my-1 transition-colors">
+                        <div className="font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
                           {member.name}
                         </div>
                         <div className="text-sm text-slate-500 dark:text-slate-400">
                           {member.email}
                         </div>
-                      </div>
+                      </Link>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-slate-900 dark:text-white">
                       {member.totalTasks}

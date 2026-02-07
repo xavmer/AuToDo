@@ -97,6 +97,9 @@ export default function NewManualProjectPage() {
               className="w-full px-3 py-2 border border-gray-300 rounded-md text-gray-900"
               placeholder="Describe the project objectives and scope..."
             />
+            <p className="text-xs text-gray-500 mt-1">
+              This description will be preserved and available when adding tasks
+            </p>
           </div>
 
           <div className="bg-gray-50 border border-gray-200 rounded-md p-4">

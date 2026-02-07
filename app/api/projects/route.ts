@@ -33,13 +33,10 @@ async function handleGET(req: Request) {
       orderBy: { createdAt: "desc" },
     })
   } else if (user.role === UserRole.MANAGER) {
-    // Managers see projects they manage or from their team
+    // Managers see only projects they manage
     projects = await prisma.project.findMany({
       where: {
-        OR: [
-          { managerId: user.id },
-          ...(user.teamId ? [{ manager: { teamId: user.teamId } }] : []),
-        ],
+        managerId: user.id,
       },
       include: {
         createdBy: { select: { id: true, name: true, email: true } },

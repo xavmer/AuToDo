@@ -28,7 +28,13 @@ export default function ProjectEditPage({ params }: { params: { id: string } }) 
       setProject(data.project)
       setTitle(data.project.title)
       setDescription(data.project.description || "")
-      setTasks(data.project.tasks || [])
+      // Convert arrays to comma-separated strings for editing
+      const tasksForEditing = (data.project.tasks || []).map((task: any) => ({
+        ...task,
+        skills: Array.isArray(task.skills) ? task.skills.join(", ") : "",
+        acceptanceCriteria: Array.isArray(task.acceptanceCriteria) ? task.acceptanceCriteria.join(", ") : "",
+      }))
+      setTasks(tasksForEditing)
     } catch (err) {
       setError("Failed to load project")
     } finally {
@@ -54,6 +60,15 @@ export default function ProjectEditPage({ params }: { params: { id: string } }) 
 
       // Update tasks (create new ones, update existing, delete removed)
       for (const task of tasks) {
+        // Convert comma-separated strings to arrays
+        const skillsArray = typeof task.skills === 'string' 
+          ? task.skills.split(',').map((s: string) => s.trim()).filter(Boolean)
+          : Array.isArray(task.skills) ? task.skills : []
+        
+        const criteriaArray = typeof task.acceptanceCriteria === 'string'
+          ? task.acceptanceCriteria.split(',').map((s: string) => s.trim()).filter(Boolean)
+          : Array.isArray(task.acceptanceCriteria) ? task.acceptanceCriteria : ["Task completed"]
+
         if (task.id) {
           // Update existing task
           await fetch(`/api/tasks/${task.id}`, {
@@ -63,8 +78,10 @@ export default function ProjectEditPage({ params }: { params: { id: string } }) 
               title: task.title,
               description: task.description,
               estimatedEffortHours: task.estimatedEffortHours,
-              skills: task.skills,
-              acceptanceCriteria: task.acceptanceCriteria,
+              priority: task.priority,
+              useAI: task.useAI || false,
+              skills: skillsArray,
+              acceptanceCriteria: criteriaArray,
             }),
           })
         } else {
@@ -76,8 +93,10 @@ export default function ProjectEditPage({ params }: { params: { id: string } }) 
               title: task.title,
               description: task.description,
               estimatedEffortHours: task.estimatedEffortHours || 4,
-              skills: task.skills || [],
-              acceptanceCriteria: task.acceptanceCriteria || ["Task completed"],
+              priority: task.priority || 0,
+              useAI: task.useAI || false,
+              skills: skillsArray,
+              acceptanceCriteria: criteriaArray,
               dependencies: [],
               suggestedAssigneeType: "EMPLOYEE",
             }),
@@ -100,8 +119,10 @@ export default function ProjectEditPage({ params }: { params: { id: string } }) 
         title: "",
         description: "",
         estimatedEffortHours: 4,
-        skills: [],
-        acceptanceCriteria: ["Task completed"],
+        priority: 0,
+        useAI: false,
+        skills: "",
+        acceptanceCriteria: "",
       },
     ])
   }
@@ -113,15 +134,6 @@ export default function ProjectEditPage({ params }: { params: { id: string } }) 
   const updateTask = (index: number, field: string, value: any) => {
     const updated = [...tasks]
     updated[index] = { ...updated[index], [field]: value }
-    setTasks(updated)
-  }
-
-  const updateTaskArray = (index: number, field: string, value: string) => {
-    const updated = [...tasks]
-    updated[index] = {
-      ...updated[index],
-      [field]: value.split(",").map((s) => s.trim()).filter(Boolean),
-    }
     setTasks(updated)
   }
 
@@ -231,53 +243,81 @@ export default function ProjectEditPage({ params }: { params: { id: string } }) 
                         rows={2}
                         className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-indigo-500"
                       />
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
                         <div>
                           <label className="block text-xs text-slate-600 dark:text-slate-400 mb-1">
                             Effort (hours)
                           </label>
                           <input
                             type="number"
-                            value={task.estimatedEffortHours}
-                            onChange={(e) =>
-                              updateTask(index, "estimatedEffortHours", parseFloat(e.target.value))
-                            }
+                            value={task.estimatedEffortHours || ""}
+                            onChange={(e) => {
+                              const value = e.target.value === "" ? 4 : parseFloat(e.target.value)
+                              updateTask(index, "estimatedEffortHours", isNaN(value) ? 4 : value)
+                            }}
                             min="0.5"
-                            max="8"
+                            max="40"
                             step="0.5"
                             className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-indigo-500"
                           />
                         </div>
                         <div>
                           <label className="block text-xs text-slate-600 dark:text-slate-400 mb-1">
-                            Skills (comma-separated)
+                            Priority
+                          </label>
+                          <select
+                            value={task.priority ?? 0}
+                            onChange={(e) => updateTask(index, "priority", parseInt(e.target.value))}
+                            className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-indigo-500"
+                          >
+                            <option value={0}>Low</option>
+                            <option value={1}>Medium</option>
+                            <option value={2}>High</option>
+                          </select>
+                        </div>
+                        <div className="md:col-span-2">
+                          <label className="block text-xs text-slate-600 dark:text-slate-400 mb-1">
+                            Skills Required (comma-separated)
                           </label>
                           <input
                             type="text"
-                            value={Array.isArray(task.skills) ? task.skills.join(", ") : ""}
-                            onChange={(e) => updateTaskArray(index, "skills", e.target.value)}
-                            placeholder="React, TypeScript"
+                            value={task.skills || ""}
+                            onChange={(e) => updateTask(index, "skills", e.target.value)}
+                            placeholder="e.g., React, TypeScript, Node.js, PostgreSQL"
                             className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-indigo-500"
                           />
+                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                            Separate multiple skills with commas
+                          </p>
                         </div>
                         <div>
                           <label className="block text-xs text-slate-600 dark:text-slate-400 mb-1">
-                            Acceptance Criteria (comma-separated)
+                            Acceptance Criteria
                           </label>
                           <input
                             type="text"
-                            value={
-                              Array.isArray(task.acceptanceCriteria)
-                                ? task.acceptanceCriteria.join(", ")
-                                : ""
-                            }
-                            onChange={(e) =>
-                              updateTaskArray(index, "acceptanceCriteria", e.target.value)
-                            }
-                            placeholder="Unit tests pass, Code reviewed"
+                            value={task.acceptanceCriteria || ""}
+                            onChange={(e) => updateTask(index, "acceptanceCriteria", e.target.value)}
+                            placeholder="Tests pass, Code reviewed"
                             className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-indigo-500"
                           />
+                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                            Comma-separated list
+                          </p>
                         </div>
+                      </div>
+                      <div className="mt-3 flex items-center">
+                        <input
+                          type="checkbox"
+                          id={`useAI-${index}`}
+                          checked={task.useAI || false}
+                          onChange={(e) => updateTask(index, "useAI", e.target.checked)}
+                          className="w-4 h-4 text-indigo-600 bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 rounded focus:ring-indigo-500"
+                        />
+                        <label htmlFor={`useAI-${index}`} className="ml-2 text-sm text-slate-700 dark:text-slate-300">
+                          Use AI to complete this task
+                          <span className="ml-2 text-xs text-slate-500 dark:text-slate-400">(contributes to AI efficiency gain)</span>
+                        </label>
                       </div>
                     </div>
                     <button
