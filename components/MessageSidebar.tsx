@@ -55,7 +55,8 @@ type ViewMode = "dm" | "group"
 export function MessageSidebar() {
   const { isOpen, setIsOpen, selectedUserId } = useSidebar()
   const [viewMode, setViewMode] = useState<ViewMode>("dm")
-  const [users, setUsers] = useState<User[]>([])
+  const [conversations, setConversations] = useState<User[]>([])
+  const [allUsers, setAllUsers] = useState<User[]>([])
   const [groupChats, setGroupChats] = useState<GroupChat[]>([])
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
   const [selectedGroup, setSelectedGroup] = useState<GroupChat | null>(null)
@@ -67,11 +68,48 @@ export function MessageSidebar() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  const totalUnread = users.reduce((sum, user) => sum + user.unreadCount, 0)
+  const totalUnread = conversations.reduce((sum, user) => sum + user.unreadCount, 0)
+
+  // Merge conversations data into allUsers whenever either changes
+  useEffect(() => {
+    if (conversations.length > 0 && allUsers.length > 0) {
+      const merged = allUsers.map((u) => {
+        const convo = conversations.find((c) => c.id === u.id)
+        if (convo) {
+          return {
+            ...u,
+            unreadCount: convo.unreadCount,
+            lastMessage: convo.lastMessage,
+          }
+        }
+        return u
+      })
+      // Sort by: unread first, then by last message time, then by name
+      merged.sort((a, b) => {
+        // Unread messages first
+        if (a.unreadCount !== b.unreadCount) {
+          return b.unreadCount - a.unreadCount
+        }
+        // Then by last message time
+        if (a.lastMessage && b.lastMessage) {
+          return new Date(b.lastMessage.createdAt).getTime() - new Date(a.lastMessage.createdAt).getTime()
+        }
+        if (a.lastMessage && !b.lastMessage) return -1
+        if (!a.lastMessage && b.lastMessage) return 1
+        // Finally by name
+        return a.name.localeCompare(b.name)
+      })
+      // Only update if data actually changed
+      if (JSON.stringify(merged) !== JSON.stringify(allUsers)) {
+        setAllUsers(merged)
+      }
+    }
+  }, [conversations])
 
   useEffect(() => {
     loadCurrentUser()
     loadConversations()
+    loadAllUsers()
     loadGroupChats()
     const interval = setInterval(() => {
       loadConversations()
@@ -95,21 +133,22 @@ export function MessageSidebar() {
   useEffect(() => {
     if (selectedUserId) {
       console.log("[MessageSidebar] selectedUserId changed:", selectedUserId)
-      console.log("[MessageSidebar] users array length:", users.length)
-      const user = users.find((u) => u.id === selectedUserId)
+      console.log("[MessageSidebar] allUsers length:", allUsers.length)
+      // Check allUsers first since it has everyone
+      const user = allUsers.find((u) => u.id === selectedUserId)
       if (user) {
-        console.log("[MessageSidebar] Found user in list:", user.name)
+        console.log("[MessageSidebar] Found user in allUsers:", user.name)
         setSelectedUser(user)
         setSelectedGroup(null)
         setViewMode("dm")
         setIsOpen(true)
       } else {
-        console.log("[MessageSidebar] User not in list, fetching by ID:", selectedUserId)
-        // User not in conversation list, fetch their details
+        console.log("[MessageSidebar] User not loaded yet, fetching by ID:", selectedUserId)
+        // User list not loaded yet, fetch their details
         loadUserById(selectedUserId)
       }
     }
-  }, [selectedUserId, users])
+  }, [selectedUserId, allUsers])
 
   async function loadUserById(userId: string) {
     console.log("[MessageSidebar] loadUserById called:", userId)
@@ -161,12 +200,36 @@ export function MessageSidebar() {
 
   async function loadConversations() {
     try {
-      const res = await fetch("/api/messages/users")
+      const res = await fetch("/api/messages/conversations")
       if (res.ok) {
-        setUsers(await res.json())
+        const convos = await res.json()
+        setConversations(convos)
       }
     } catch (err) {
       console.error("Failed to load conversations:", err)
+    }
+  }
+
+  async function loadAllUsers() {
+    try {
+      const res = await fetch("/api/users")
+      if (res.ok) {
+        const data = await res.json()
+        const users = Array.isArray(data) ? data : []
+        // Convert to User format
+        const formattedUsers = users.map((u: any) => ({
+          id: u.id,
+          name: u.name,
+          email: u.email,
+          role: u.role,
+          avatarUrl: u.avatarUrl,
+          unreadCount: 0,
+          lastMessage: null,
+        }))
+        setAllUsers(formattedUsers)
+      }
+    } catch (err) {
+      console.error("Failed to load all users:", err)
     }
   }
 
@@ -175,7 +238,17 @@ export function MessageSidebar() {
       const res = await fetch("/api/groupchats")
       if (res.ok) {
         const data = await res.json()
-        setGroupChats(Array.isArray(data) ? data : [])
+        const groups = Array.isArray(data) ? data : []
+        // Sort by last message time
+        groups.sort((a, b) => {
+          if (a.lastMessage && b.lastMessage) {
+            return new Date(b.lastMessage.createdAt).getTime() - new Date(a.lastMessage.createdAt).getTime()
+          }
+          if (a.lastMessage && !b.lastMessage) return -1
+          if (!a.lastMessage && b.lastMessage) return 1
+          return a.name.localeCompare(b.name)
+        })
+        setGroupChats(groups)
       }
     } catch (err) {
       console.error("Failed to load group chats:", err)
@@ -186,10 +259,12 @@ export function MessageSidebar() {
   async function loadMessages(userId: string) {
     setLoading(true)
     try {
-      const res = await fetch(`/api/messages/user/${userId}`)
+      const res = await fetch(`/api/messages?userId=${userId}`)
       if (res.ok) {
         const data = await res.json()
-        setMessages(Array.isArray(data) ? data : [])
+        // API returns { messages: [...] }
+        const msgs = data.messages || []
+        setMessages(Array.isArray(msgs) ? msgs : [])
       }
     } catch (err) {
       console.error("Failed to load messages:", err)
@@ -222,30 +297,40 @@ export function MessageSidebar() {
     setSending(true)
     try {
       if (viewMode === "dm" && selectedUser) {
+        console.log("[MessageSidebar] Sending DM to:", selectedUser.id)
         const res = await fetch("/api/messages", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ receiverId: selectedUser.id, body: newMessage }),
         })
+        console.log("[MessageSidebar] DM send response:", res.status)
         if (res.ok) {
           setNewMessage("")
           loadMessages(selectedUser.id)
           loadConversations()
+        } else {
+          const error = await res.json()
+          console.error("[MessageSidebar] Failed to send DM:", error)
         }
       } else if (viewMode === "group" && selectedGroup) {
+        console.log("[MessageSidebar] Sending group message to:", selectedGroup.id)
         const res = await fetch(`/api/groupchats/${selectedGroup.id}/messages`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ body: newMessage }),
         })
+        console.log("[MessageSidebar] Group message response:", res.status)
         if (res.ok) {
           setNewMessage("")
           loadGroupMessages(selectedGroup.id)
           loadGroupChats()
+        } else {
+          const error = await res.json()
+          console.error("[MessageSidebar] Failed to send group message:", error)
         }
       }
     } catch (err) {
-      console.error("Failed to send message:", err)
+      console.error("[MessageSidebar] Failed to send message:", err)
     } finally {
       setSending(false)
     }
@@ -394,13 +479,13 @@ export function MessageSidebar() {
               {/* List View */}
               {viewMode === "dm" ? (
                 <>
-                  {users.length === 0 ? (
+                  {allUsers.length === 0 ? (
                     <div className="p-8 text-center text-slate-500">
                       <MessageSquare className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                      <p className="text-sm">No conversations yet</p>
+                      <p className="text-sm">Loading users...</p>
                     </div>
                   ) : (
-                    users.map((user) => (
+                    allUsers.map((user) => (
                       <button
                         key={user.id}
                         onClick={() => {
@@ -511,7 +596,7 @@ export function MessageSidebar() {
             </>
           ) : (
             <div className="space-y-2 p-2">
-              {users.slice(0, 5).map((user) => (
+              {allUsers.slice(0, 5).map((user) => (
                 <button
                   key={user.id}
                   onClick={() => {
@@ -648,7 +733,7 @@ export function MessageSidebar() {
       {/* New Group Modal */}
       {showNewGroupModal && (
         <NewGroupModal
-          users={users}
+          users={allUsers}
           onClose={() => setShowNewGroupModal(false)}
           onCreated={() => {
             setShowNewGroupModal(false)
